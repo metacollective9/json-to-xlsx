@@ -1,38 +1,92 @@
 import { APIGatewayEvent } from "aws-lambda";
 import "source-map-support/register";
-import Pdf from "./src/utils/pdf";
-import { pdfText, result } from "./src/interface/pdfText";
-import axios from "axios";
-import { badRequest, okResponse, errorResponse } from "./src/utils/responses";
-
-export const findKeywordInPDF = async (
-  event: APIGatewayEvent,
+import { okResponse, errorResponse } from "./src/utils/responses";
+import { excel } from "./src/utils/excel";
+import { sample } from './src/stub/sample';
+import { ingredients } from "./src/interface/ingredients";
+import { uploadToS3, getS3SignedUrl } from "./src/utils/awsWrapper";
+export const jsontoxlsx = async (
+  _event: APIGatewayEvent,
   _context
 ) => {
-  const searchResult: Array<result> = [];
 
   try {
-    if (!event.queryStringParameters?.pdfUrl || !event.queryStringParameters?.keywords) {
-      return badRequest;
-    }
-
-    const pdfFile = await axios.get(event.queryStringParameters.pdfUrl, {
-      responseType: "arraybuffer",
+     
+    //add this data to a an excel sheet and upload to s3
+    const excelSheet = await saveDataAsExcel(sample);
+    const objectKey = `json_to_xlsx_${new Date().getTime()}`;
+    await uploadToS3({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: `${objectKey}.xlsx`,
+      ContentType:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      Body: await excelSheet.workbook.xlsx.writeBuffer()
+    });
+    
+    //Get signed url with an expiry date
+    let downloadURL = await getS3SignedUrl({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: `${objectKey}.xlsx`,
+      Expires: 3600 //this is 60 minutes, change as per your requirements
     });
 
-    const pdfText: pdfText[] = await Pdf.getPDFText(pdfFile.data);
-    const keywords: Array<string> = event.queryStringParameters?.keywords?.split("|");
-
-    for (let keyword of keywords) {
-      searchResult.push({
-        keyword,
-        searchResult: await Pdf.searchPage(pdfText, keyword),
-      });
-    }
-
-    return okResponse(searchResult)
+    return okResponse({
+      message: 'JSON to XLSX is complete, you can download your file now',
+      downloadURL
+    })
    
   } catch (error) {
     return errorResponse(error);
   }
 };
+
+/**
+ * 
+ * @param sample 
+ * @returns excel
+ */
+ async function saveDataAsExcel(sample: ingredients[]) {
+  const workbook:excel = new excel({ headerRowFillColor: '046917', defaultFillColor: 'FFFFFF' });
+  let worksheet = await workbook.addWorkSheet({ title: 'Scrapped data' });
+  workbook.addHeaderRow(worksheet, [
+    "ID",
+    "Type",
+    "Name",
+    "PPU",
+    "Batter ID",
+    "Batter Name",
+    "Topping ID",
+    "Topping Name"
+  ]);
+
+   for (let ingredient of sample) {
+    workbook.addRow(
+      worksheet,
+      [
+        ingredient.id.toString(),
+        ingredient.type,
+        ingredient.name,
+        ingredient.ppu.toString()
+      ],
+      { bold: false, fillColor: "ffffff" }
+    );
+  
+     let size:number = ingredient.batters.length > ingredient.toppings.length ? ingredient.batters.length : ingredient.toppings.length;  
+     
+     for (let i = 0; i < size; i++)  {
+      workbook.addRow(
+        worksheet,
+        [
+          '', '', '', '',
+          ingredient.batters[i]?.id.toString(),
+          ingredient.batters[i]?.type,
+          ingredient.toppings[i]?.id.toString(),
+          ingredient.toppings[i]?.type
+        ],
+        { bold: false, fillColor: "ffffff" }
+      );
+    }
+  }
+
+  return workbook; 
+}
