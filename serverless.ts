@@ -2,7 +2,7 @@ import type { AWS } from '@serverless/typescript';
 
 const serverlessConfiguration: AWS = {
   service: 'jsontoxlsx',
-  frameworkVersion: '2',
+  frameworkVersion: '3',
   custom: {
     webpack: {
       webpackConfig: './webpack.config.js',
@@ -11,7 +11,7 @@ const serverlessConfiguration: AWS = {
     
     //'${ssm:/jsontoxlsx/api/BUCKET_NAME}' ssm is not supported yet, I have raised an issue here - https://github.com/serverless/typescript/issues/59. Once this is fixed, we don't have to hardcode bucket names on this file and can be access from AWS system manager's parameter store
 
-    AWS_BUCKET_NAME: 'Your bucket name'
+    AWS_BUCKET_NAME: 'medium-blogs'
 
   },
   // Add the serverless-webpack plugin
@@ -35,6 +35,17 @@ const serverlessConfiguration: AWS = {
           http: {
             method: 'get',
             path: 'jsontoxlsx',
+          }
+        }
+      ]
+    },
+    dynamicJsontoxlsx: {
+      handler: 'handler.dynamicJsontoxlsx',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: 'djsontoxlsx',
           }
         }
       ]
